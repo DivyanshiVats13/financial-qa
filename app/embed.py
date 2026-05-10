@@ -3,15 +3,20 @@ from sentence_transformers import SentenceTransformer
 from pathlib import Path
 import chromadb
 
-# Load model once when the module is imported
 MODEL_NAME = "all-MiniLM-L6-v2"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-print(f"Loading embedding model on {DEVICE}...")
-model = SentenceTransformer(MODEL_NAME, device=DEVICE)
-print("Embedding model loaded.")
+# Lazy loading — model loads only when first needed
+_model = None
 
-# ChromaDB client
+def get_model():
+    global _model
+    if _model is None:
+        print(f"Loading embedding model on {DEVICE}...")
+        _model = SentenceTransformer(MODEL_NAME, device=DEVICE)
+        print("Embedding model loaded.")
+    return _model
+
 CHROMA_PATH = str(Path("embeddings").resolve())
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 
@@ -22,15 +27,14 @@ def get_or_create_collection(name: str = "financial_docs"):
     )
 
 def embed_and_store(chunks: list[str], doc_name: str) -> int:
-    # Delete existing collection for this doc and recreate
     try:
         chroma_client.delete_collection("financial_docs")
     except:
         pass
 
     collection = get_or_create_collection()
+    model = get_model()
 
-    # Generate embeddings using PyTorch on GPU
     print(f"Generating embeddings for {len(chunks)} chunks on {DEVICE}...")
     embeddings = model.encode(
         chunks,
@@ -40,7 +44,6 @@ def embed_and_store(chunks: list[str], doc_name: str) -> int:
         device=DEVICE
     )
 
-    # Store in ChromaDB
     collection.add(
         documents=chunks,
         embeddings=embeddings.tolist(),
@@ -53,15 +56,14 @@ def embed_and_store(chunks: list[str], doc_name: str) -> int:
 
 def query_similar_chunks(question: str, n_results: int = 5) -> list[str]:
     collection = get_or_create_collection()
+    model = get_model()
 
-    # Embed the question
     question_embedding = model.encode(
         [question],
         convert_to_numpy=True,
         device=DEVICE
     )
 
-    # Search ChromaDB
     results = collection.query(
         query_embeddings=question_embedding.tolist(),
         n_results=n_results
