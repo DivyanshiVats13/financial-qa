@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 
-const API = "http://localhost:8000";
+const API = "https://financial-qa-backend.onrender.com";
 
 export default function App() {
   const [file, setFile] = useState(null);
